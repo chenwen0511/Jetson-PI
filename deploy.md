@@ -1,6 +1,3 @@
-
-[TOC]
-
 # Jetson-PI 部署与加速效果测试
 
 面向本机（Jetson / Ubuntu）从零跑通环境，并测试 Jetson-PI（FAAC 异步推理）的实际效果。
@@ -392,42 +389,72 @@ df -h /                            # 建议可用 ≥ 20G；OTA 包体积大
 ```
 
 - **整盘备份 / 拷走** `~/stephen`、密钥、docker 数据等重要文件（升级或刷机可能丢数据）。
-- 准备一台 **x86_64 Linux 主机**（生成 OTA payload 或跑 SDK Manager），与 Jetson 同网或 USB。
-- 确认板型配置名（AGX Orin DevKit 为 `jetson-agx-orin-devkit`）。
+- 准备主机：可用 **Windows**（SDK Manager + WSL，见 §12.3.2）或 **Ubuntu x86**；与 Jetson 用 USB-C 直连。
+- 确认板型：本机为 **Jetson AGX Orin Developer Kit**（`jetson-agx-orin-devkit`）。
 
 ### 12.2 路径选择
 
-| 路径 | 特点 |
-|------|------|
-| **A. SDK Manager 刷机** | 步骤少；默认会重装 rootfs（**清空用户数据**）；适合可重装的开发机 |
-| **B. Image-Based OTA** | 可在设备上更新分区；从 35.4.1 须 **两跳**（→35.5→36）；步骤多，需主机生成 payload |
+| 路径 | 主机 | 特点 |
+|------|------|------|
+| **A. SDK Manager 刷机** | **Windows 或 Ubuntu** | 步骤少；默认重装 rootfs（**清空用户数据**）；Windows 用户优先看这条 |
+| **B. Image-Based OTA** | 生成 payload 需 **Linux x86** | 两跳（→35.5→36）；Windows 上不推荐自己做 B（除非另有 Linux 机/WSL 熟练） |
+
+> 只有 Windows 电脑时：走 **§12.3.2** 即可，不必另找 Linux 主机。
 
 ---
 
 ### 12.3 路径 A：SDK Manager 刷 JetPack 6（推荐「可接受重装」时）
 
-在 **Ubuntu x86 主机**上：
+官方文档：[Install Jetson Software with SDK Manager (Direct Flash)](https://docs.nvidia.com/sdk-manager/install-with-sdkm-jetson-direct-flash/index.html)、[WSL](https://docs.nvidia.com/sdk-manager/wsl-systems/index.html)。
+
+#### 12.3.1 通用：Jetson 进 Recovery
+
+1. Jetson **关机**。
+2. USB-C 数据线（需能传数据，勿用纯充电线）直连主机，**不要经过 Hub**。
+3. AGX Orin DevKit：**按住 Recovery → 按一下 Power/Reset → 约 2 秒后松开 Recovery**。
+4. 主机应识别为 NVIDIA **APX** 设备。
+
+#### 12.3.2 主机是 Windows（可用）
+
+从 **JetPack 6.2.1** 起，SDK Manager 支持在 Windows 上刷 **Jetson AGX Orin**（内部用 WSL2 + usbipd）。你的板型符合。
+
+1. 在 Windows 安装最新 [NVIDIA SDK Manager](https://developer.nvidia.com/sdk-manager)（选 Windows 版）。
+2. 安装 **APX 驱动**（SDK Manager / NVIDIA 文档会提供；进 Recovery 后在「设备管理器 → 通用串行总线设备」里应看到 **APX**，且无感叹号）。
+3. 打开 SDK Manager，登录 NVIDIA 账号。
+4. 按提示允许其配置 **WSL2**、定制 kernel、**USBIPD-Win**（会改 `C:\Users\<你>\.wslconfig`，原文件会备份为 `.wslconfig.bak`）。
+5. Target 选 **Jetson AGX Orin**；JetPack 选 **≥ 6.2.1**（Windows 刷机要求从这个版本起）；安装方式选 **Direct Flash**。
+6. 确认板子已在 Recovery 且设备管理器有 APX → 开始下载并 Flash（耗时长，保持 USB 不断）。
+7. 刷完后 Jetson 接显示器/键鼠完成首次开机；系统应为 **Ubuntu 22.04 + L4T R36**。
+
+若 SDK Manager 自动挂 USB 失败，可在 **管理员 PowerShell** 手动把 APX 挂进 WSL（BUSID 以 `usbipd list` 为准）：
+
+```powershell
+usbipd list
+usbipd bind --busid <BUSID> --force
+usbipd attach --wsl --busid=<BUSID> --auto-attach
+```
+
+注意：
+
+- 论坛侧仍更推荐原生 Ubuntu 主机；Windows 路径官方已支持，但遇怪问题可改用 Ubuntu Live U 盘临时刷一次。
+- **不要用** VMware/VirtualBox 透传 USB 刷机（不稳定）。
+- 刷机默认 **清空 eMMC/NVMe 上的系统分区**；先备份 `~/stephen` 等数据。
+
+#### 12.3.3 主机是 Ubuntu x86
 
 1. 安装 [NVIDIA SDK Manager](https://developer.nvidia.com/sdk-manager)。
-2. Jetson 关机，USB-C 连主机，进 **Force Recovery**：
-   - AGX Orin DevKit：按住 **Recovery**，点 **Reset/Power**，松开 Recovery。
-   - 主机执行 `lsusb`，应看到类似 `NVIDIA Corp. APX`。
-3. 打开 SDK Manager → 选中检测到的 AGX Orin → 选择 **JetPack 6.x**（建议较新的稳定版，如 6.1/6.2，对应 L4T R36.x）。
-4. 勾选 Jetson Linux / 需要的 CUDA、cuDNN 等 → Flash。
-5. 按提示完成首次开机、用户创建；系统应为 **Ubuntu 22.04**。
+2. Jetson 按 §12.3.1 进 Recovery；主机 `lsusb` 应看到 `NVIDIA Corp. APX`。
+3. SDK Manager → 选 AGX Orin → **JetPack 6.x**（建议 6.2.1+）→ Direct Flash → 安装。
 
-刷完后在 Jetson 上验证：
+#### 12.3.4 刷完后在 Jetson 上验证并重建环境
 
 ```bash
 cat /etc/nv_tegra_release          # 应为 R36 (release), REVISION: x.x
 cat /etc/lsb-release               # Ubuntu 22.04
-# 驱动应能匹配 CUDA 12
 ```
 
-然后 **重建** 本仓库环境（旧 `.venv` 建议删掉重装）：
-
 ```bash
-cd /home/termitech/stephen/01-code/Jetson-PI
+cd /home/termitech/stephen/01-code/Jetson-PI   # 若重装后需重新 clone
 rm -rf .venv
 # 回到本文 §1–§2 重新 uv sync，再跑 JAX 验证
 ```
@@ -436,7 +463,8 @@ rm -rf .venv
 
 ### 12.4 路径 B：Image-Based OTA（35.4.1 → 35.5.0 → 36.x）
 
-以下在 **x86 主机**准备 BSP，在 **Jetson** 上执行 `nv_ota_start.sh`。包名/版本号以 [NVIDIA L4T 下载页](https://developer.nvidia.com/embedded/jetson-linux-archive) 为准；示例用 R35.5.0 与 R36.4.x/R36.5.x。
+> **Windows 用户一般跳过本节**，用 §12.3.2 即可。  
+> 以下在 **Linux x86 主机**准备 BSP，在 **Jetson** 上执行 `nv_ota_start.sh`。包名以 [L4T 下载页](https://developer.nvidia.com/embedded/jetson-linux-archive) 为准。
 
 #### 步骤 1：主机下载并展开 R35.5.0 + R36.x
 
