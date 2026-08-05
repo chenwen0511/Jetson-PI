@@ -8,6 +8,8 @@ import numpy as np
 from openpi_client import websocket_client_policy as _websocket_client_policy
 import polars as pl
 import rich
+from rich.console import Console
+from rich.table import Table
 import tqdm
 import tyro
 
@@ -70,7 +72,7 @@ class TimingRecorder:
     def print_all_stats(self) -> None:
         """Print statistics for all keys in a concise format."""
 
-        table = rich.table.Table(
+        table = Table(
             title="[bold blue]Timing Statistics[/bold blue]",
             show_header=True,
             header_style="bold white",
@@ -103,7 +105,7 @@ class TimingRecorder:
             table.add_row(key, *values)
 
         # Print with custom console settings
-        console = rich.console.Console(width=None, highlight=True)
+        console = Console(width=None, highlight=True)
         console.print(table)
 
     def write_parquet(self, path: pathlib.Path) -> None:

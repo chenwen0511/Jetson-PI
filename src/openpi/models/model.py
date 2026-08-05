@@ -311,7 +311,10 @@ def restore_params(
 
     with ocp.PyTreeCheckpointer() as ckptr:
         metadata = ckptr.metadata(params_path)
-        item = {"params": metadata["params"]}
+        # orbax-checkpoint>=0.12 returns StepMetadata; older versions returned a
+        # dict-like tree directly. Item tree lives under ``item_metadata``.
+        tree_meta = getattr(metadata, "item_metadata", metadata)
+        item = {"params": tree_meta["params"]}
 
         params = ckptr.restore(
             params_path,
